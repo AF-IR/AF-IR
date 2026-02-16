@@ -91,6 +91,39 @@ h2 {
   margin-bottom: 18px;
 }
 
+/* فیلترها */
+.filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+  justify-content: center;
+}
+.filters button {
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: rgba(30, 41, 59, 0.7);
+  color: white;
+  font-size: 13px;
+  transition: 0.2s;
+}
+.filters button.active {
+  background: #2563eb;
+  color: white;
+}
+
+/* جستجو */
+#search-box {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: none;
+  font-size: 14px;
+  outline: none;
+}
+
 /* لیست فایل‌ها */
 ul {
   list-style: none;
@@ -136,6 +169,16 @@ li:hover {
   font-size: 12px;
   opacity: 0.8;
 }
+
+/* برچسب‌ها */
+.badge {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  margin-right: 6px;
+}
+.badge.new { background: #ff3b3b; color: white; }
+.badge.notdl { background: #ffaa00; color: black; }
 
 /* دکمه دانلود */
 .download-btn {
@@ -192,10 +235,21 @@ li:hover {
   <div class="subtitle">دانلود جزوه‌ها، تمرین‌ها و نمونه سوال‌ها</div>
   <div id="views">در حال بارگذاری...</div>
 
+  <!-- جستجو -->
+  <input id="search-box" type="text" placeholder="جستجو در فایل‌ها...">
+
+  <!-- فیلترها -->
+  <div class="filters">
+    <button data-filter="all" class="active">همه</button>
+    <button data-filter="new">جدیدها</button>
+    <button data-filter="not-downloaded">دانلود نشده</button>
+    <button data-filter="downloaded">دانلود شده</button>
+  </div>
+
   <ul id="file-list"></ul>
 
   <div class="footer" style="text-align:center;margin-top:25px;font-size:13px;opacity:0.8;">
-             © 2026 — تمامی حقوق محفوظ است | آرشام فاضل
+    © 2026 — تمامی حقوق محفوظ است | آرشام فاضل
   </div>
 </div>
 
@@ -228,6 +282,14 @@ function toggleTheme() {
   else applyTheme("dark");
 })();
 
+// ------------------ شمارنده بازدید ------------------
+(function visitCounter() {
+  let views = localStorage.getItem("myViews");
+  views = views ? Number(views) + 1 : 1;
+  localStorage.setItem("myViews", views);
+  document.getElementById("views").textContent = "تعداد بازدید شما: " + views;
+})();
+
 // ------------------ تشخیص آیکون ------------------
 function getFileIcon(name) {
   const ext = name.split(".").pop().toLowerCase();
@@ -258,7 +320,33 @@ async function loadFiles() {
       icon: getFileIcon(item.name)
     }));
 
+  markNewFiles(files);
   renderFiles(files);
+  saveFileList(files);
+}
+
+// ------------------ ذخیره لیست فایل‌ها ------------------
+function saveFileList(files) {
+  localStorage.setItem("fileList", JSON.stringify(files.map(f => f.name)));
+}
+
+// ------------------ تشخیص فایل جدید ------------------
+function markNewFiles(files) {
+  const oldList = JSON.parse(localStorage.getItem("fileList") || "[]");
+  files.forEach(f => f.isNew = !oldList.includes(f.name));
+}
+
+// ------------------ دانلود شده‌ها ------------------
+function isDownloaded(name) {
+  const list = JSON.parse(localStorage.getItem("downloadedFiles") || "[]");
+  return list.includes(name);
+}
+function markDownloaded(name) {
+  const list = JSON.parse(localStorage.getItem("downloadedFiles") || "[]");
+  if (!list.includes(name)) {
+    list.push(name);
+    localStorage.setItem("downloadedFiles", JSON.stringify(list));
+  }
 }
 
 // ------------------ رندر ------------------
@@ -269,23 +357,65 @@ function renderFiles(list) {
   list.forEach(file => {
     const li = document.createElement("li");
 
+    const downloaded = isDownloaded(file.name);
+    const newBadge = file.isNew ? `<span class="badge new">NEW</span>` : "";
+    const dlBadge = !downloaded ? `<span class="badge notdl">دانلود نشده</span>` : "";
+
+    li.classList.add(file.isNew ? "is-new" : "");
+    li.classList.add(downloaded ? "downloaded" : "not-downloaded");
+
     li.innerHTML = `
       <div class="file-info">
-        <div class="file-title"><span class="file-icon">${file.icon}</span>${file.name}</div>
+        <div class="file-title">
+          ${newBadge}${dlBadge}
+          <span class="file-icon">${file.icon}</span>${file.name}
+        </div>
         <div class="file-meta">حجم: ${file.size}</div>
       </div>
-      <a class="download-btn" href="${file.url}" target="_blank"><span>⬇️</span> دانلود</a>
+      <a class="download-btn" href="${file.url}" target="_blank" data-name="${file.name}">
+        <span>⬇️</span> دانلود
+      </a>
     `;
 
     ul.appendChild(li);
   });
+
+  document.querySelectorAll(".download-btn").forEach(btn => {
+    btn.addEventListener("click", () => markDownloaded(btn.dataset.name));
+  });
 }
 
-// ------------------ بازدید ------------------
-(function fakeViews() {
-  const el = document.getElementById("views");
-  el.textContent = "تعداد بازدید: " + (2341 + Math.floor(Math.random() * 100));
-})();
+// ------------------ فیلتر ------------------
+function applyFilter(type) {
+  const items = document.querySelectorAll("#file-list li");
+
+  items.forEach(li => {
+    li.style.display = "flex";
+
+    if (type === "new" && !li.classList.contains("is-new")) li.style.display = "none";
+    if (type === "not-downloaded" && !li.classList.contains("not-downloaded")) li.style.display = "none";
+    if (type === "downloaded" && !li.classList.contains("downloaded")) li.style.display = "none";
+  });
+}
+
+document.addEventListener("click", e => {
+  if (e.target.matches(".filters button")) {
+    document.querySelectorAll(".filters button").forEach(btn => btn.classList.remove("active"));
+    e.target.classList.add("active");
+    applyFilter(e.target.dataset.filter);
+  }
+});
+
+// ------------------ جستجو ------------------
+document.getElementById("search-box").addEventListener("input", function () {
+  const text = this.value.trim().toLowerCase();
+  const items = document.querySelectorAll("#file-list li");
+
+  items.forEach(li => {
+    const name = li.querySelector(".file-title").textContent.toLowerCase();
+    li.style.display = name.includes(text) ? "flex" : "none";
+  });
+});
 
 // ------------------ شروع ------------------
 loadFiles();
